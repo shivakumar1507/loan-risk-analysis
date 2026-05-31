@@ -1,0 +1,207 @@
+-- ============================================================
+-- Loan Portfolio Risk Dashboard — DAX Measures Reference
+-- Author : Shiva Kumar Devatha
+-- Tool   : Microsoft Power BI
+-- ============================================================
+-- HOW TO USE:
+-- In Power BI Desktop → Modeling tab → New Measure
+-- Copy each measure below and paste into the formula bar
+-- ============================================================
+
+
+-- ── PAGE 1: EXECUTIVE SUMMARY KPIs ──────────────────────────
+
+-- Total Loans
+Total Loans =
+COUNTROWS(loan_data)
+
+-- Total Disbursed Amount
+Total Disbursed =
+SUM(loan_data[loan_amnt])
+
+-- Total Disbursed (formatted in Millions)
+Total Disbursed (M) =
+DIVIDE(SUM(loan_data[loan_amnt]), 1000000)
+
+-- Average Loan Amount
+Avg Loan Amount =
+AVERAGE(loan_data[loan_amnt])
+
+-- Average Interest Rate
+Avg Interest Rate =
+AVERAGE(loan_data[int_rate])
+
+-- Overall Default Rate %
+Default Rate % =
+DIVIDE(
+    COUNTROWS(FILTER(loan_data, loan_data[is_default] = 1)),
+    COUNTROWS(loan_data),
+    0
+) * 100
+
+-- Total Amount Repaid
+Total Repaid =
+SUM(loan_data[total_pymnt])
+
+-- Total Recoveries
+Total Recovered =
+SUM(loan_data[recoveries])
+
+-- Recovery Rate %
+Recovery Rate % =
+DIVIDE(
+    SUM(loan_data[recoveries]),
+    SUMX(FILTER(loan_data, loan_data[is_default] = 1), loan_data[loan_amnt]),
+    0
+) * 100
+
+
+-- ── PAGE 2: RISK ANALYSIS ────────────────────────────────────
+
+-- Default Count
+Default Count =
+CALCULATE(
+    COUNTROWS(loan_data),
+    loan_data[is_default] = 1
+)
+
+-- Non-Default Count
+Non-Default Count =
+CALCULATE(
+    COUNTROWS(loan_data),
+    loan_data[is_default] = 0
+)
+
+-- Default Rate by Selected Grade (context-aware)
+Default Rate by Grade =
+DIVIDE(
+    CALCULATE(COUNTROWS(loan_data), loan_data[is_default] = 1),
+    COUNTROWS(loan_data),
+    0
+) * 100
+
+-- High Risk Loan % (Grade E, F, G)
+High Risk Loan % =
+DIVIDE(
+    CALCULATE(
+        COUNTROWS(loan_data),
+        loan_data[risk_tier] = "High Risk"
+    ),
+    COUNTROWS(loan_data),
+    0
+) * 100
+
+-- Average DTI for Defaulters
+Avg DTI (Defaulters) =
+CALCULATE(
+    AVERAGE(loan_data[dti]),
+    loan_data[is_default] = 1
+)
+
+-- Average DTI for Non-Defaulters
+Avg DTI (Non-Defaulters) =
+CALCULATE(
+    AVERAGE(loan_data[dti]),
+    loan_data[is_default] = 0
+)
+
+-- DTI Difference (insight measure)
+DTI Risk Gap =
+[Avg DTI (Defaulters)] - [Avg DTI (Non-Defaulters)]
+
+
+-- ── PAGE 3: PORTFOLIO TRENDS ─────────────────────────────────
+
+-- Month-over-Month Loan Volume Change %
+MoM Loan Volume % =
+VAR CurrentMonth = SUM(loan_data[loan_amnt])
+VAR PreviousMonth =
+    CALCULATE(
+        SUM(loan_data[loan_amnt]),
+        DATEADD(loan_data[issue_date], -1, MONTH)
+    )
+RETURN
+DIVIDE(CurrentMonth - PreviousMonth, PreviousMonth, 0) * 100
+
+-- Cumulative Loans Disbursed
+Cumulative Disbursed =
+CALCULATE(
+    SUM(loan_data[loan_amnt]),
+    FILTER(
+        ALL(loan_data[issue_year], loan_data[issue_month]),
+        loan_data[issue_year] <= MAX(loan_data[issue_year])
+    )
+)
+
+-- Year-over-Year Default Rate Change
+YoY Default Rate Change =
+VAR CurrentYear =
+    CALCULATE(
+        DIVIDE(
+            COUNTROWS(FILTER(loan_data, loan_data[is_default] = 1)),
+            COUNTROWS(loan_data), 0
+        )
+    )
+VAR PreviousYear =
+    CALCULATE(
+        DIVIDE(
+            COUNTROWS(FILTER(loan_data, loan_data[is_default] = 1)),
+            COUNTROWS(loan_data), 0
+        ),
+        DATEADD(loan_data[issue_date], -1, YEAR)
+    )
+RETURN
+(CurrentYear - PreviousYear) * 100
+
+
+-- ── CONDITIONAL FORMATTING MEASURES ─────────────────────────
+-- Use these to colour-code visuals in Power BI
+
+-- Default Rate Color (Red if >15%, Yellow if 10–15%, Green if <10%)
+Default Rate Color =
+SWITCH(
+    TRUE(),
+    [Default Rate %] >= 15, "#D32F2F",   -- Red
+    [Default Rate %] >= 10, "#F9A825",   -- Amber
+    "#388E3C"                             -- Green
+)
+
+-- Risk Tier Color
+Risk Tier Color =
+SWITCH(
+    SELECTEDVALUE(loan_data[risk_tier]),
+    "Low Risk",    "#388E3C",   -- Green
+    "Medium Risk", "#F9A825",   -- Amber
+    "High Risk",   "#D32F2F",   -- Red
+    "#9E9E9E"                   -- Grey for unknown
+)
+
+
+-- ── KEY INSIGHT MEASURES (for dashboard callout cards) ───────
+
+-- Insight: Employment Stability Impact
+-- Use in a card visual with title "Stable Employees Default Rate"
+Stable Emp Default Rate =
+CALCULATE(
+    [Default Rate %],
+    loan_data[emp_stable] = 1
+)
+
+Unstable Emp Default Rate =
+CALCULATE(
+    [Default Rate %],
+    loan_data[emp_stable] = 0
+)
+
+-- Insight: High Income Borrower Default Rate
+High Income Default Rate =
+CALCULATE(
+    [Default Rate %],
+    loan_data[high_income] = 1
+)
+
+Low Income Default Rate =
+CALCULATE(
+    [Default Rate %],
+    loan_data[high_income] = 0
+)
